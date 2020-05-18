@@ -27,7 +27,7 @@ function dynamics!(du,u,p,t)
 
     # Hamiltonians. Set m and k to 1.0/0.1.
     H(x,v) = 1/2 * x^2 + 1/2 * v^2
-    H_2(x,v) = 0.1/2 * x^2 + 0.1/2 * v^2
+    H_2(x,v) = 1/(2*10) * x^2 + 1/2 * 0.1 * v^2
 
     # VFE as potential function. With the right choice of p and q in boils down
     # to precision weighed prediction errors. See Buckley for derivation
@@ -79,10 +79,10 @@ end
 
 # Uncorrelated Wiener noise
 function noise!(du,u,p,t)
-    du[1] = 0.0
-    du[2] = 0.0
-    du[3] = 0.1
-    du[4] = 0.1
+    du[1] = 0.1
+    du[2] = 0.1
+    du[3] = 0.0
+    du[4] = 0.0
     du[5] = 0.0 # Note that we don't add noise to active states.
 
 end
@@ -99,7 +99,7 @@ sol = solve(prob);
 using Plots
 
 # Plot all states
-plot(sol,dpi=600); savefig("viz/model.png")
+plot(sol,dpi=600);savefig("viz/model.png")
 
 # Predicted / actual states. This should be close to a straight line - except for the spike when the environment is reset
-#plot(sol,vars=(1,3),dpi=600); savefig("viz/tracking.png")
+plot(sol,vars=(1,3),dpi=600); savefig("viz/tracking.png")
