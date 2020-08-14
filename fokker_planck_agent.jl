@@ -1,5 +1,7 @@
 using Pkg;Pkg.activate(".");Pkg.instantiate()
-using Zygote, Random, DifferentialEquations,Plots
+using OhMyREPL,Zygote, Random, DifferentialEquations, Plots, LaTeXStrings
+enable_autocomplete_brackets(false)
+
 Random.seed!(666);
 # TODO
 # Add f and g functions to make the code easier to mess around with.
@@ -17,36 +19,42 @@ cb = DiscreteCallback(condition,affect!)
 
 # System dynamics
 function dynamics!(du,u,p,t)
-    s,v,x,x_prime,a = u
+    x,x_dot,μ_0,μ_1,a = u # Unpacke the state vector
 
-    # Parameters. 2 precisions and powerscaling
-    ϵ_1 = 0.1
-    ϵ_2 = 0.1
-    force = 1
+    # Link functions
+    h(μ) = μ
+    g(ϕ) = ϕ
 
-    # Hamiltonians. Set m and k to 1.0/0.1.
-    H(x,v) = 1/2 * x^2 + 1/2 * v^2
-    H_2(x,v) = 1/(2*10) * x^2 + 1/2 * 0.1 * v^2
-
-    # VFE as potential function. With the right choice of p and q in boils down
-    # to precision weighed prediction errors. See Buckley for derivation
-    U(s,x,x_prime) = 0.5 * ( 1/ϵ_1 * (s - x)^2 + 1/ϵ_2 * (x_prime - x)^2)
-
-    # Derivative for action
-    dxda(a) =force * (sech(a) * sech(a))
-
-    # Get gradients for both the agent and the generative process
-    ∇_U = gradient( (s_,x_,x_prime_) -> U(s_,x_,x_prime_), s,x,x_prime)
-
-    # Hack in a switch in the Hamiltonian of the generative process
+    # Parameters for environment. This change should be doable through p in the input instead.
     if t<tswitch
-	∇_H = gradient( (s_,v_) -> H(s_,v_), s,v)
+	m = 1.
+	k = 1.
     else
-	∇_H = gradient( (s_,v_) -> H_2(s_,v_), s,v)
+	m = 10.
+	k = 0.1
     end
 
-    # Final entry is for action. Split through chain rule by using inverse model
-    ∇ = [∇_H[1],∇_H[2],∇_U[2],∇_U[3], -∇_U[1] * dxda(a)]
+    # Parameters for agent. 2 precisions and action limiting term
+    σ_1 = 0.1
+    σ_2 = 0.1
+    force = 0.5
+
+    # Hamiltonian for the environmental process
+    H(x,x_dot,a,m,k) = 1/(2*m) * x^2 + 1/2 * (k * x_dot^2) - x_dot * force *tanh(a)
+
+    # VFE as potential function. With the right choice of p and q it boils down to precision weighed prediction errors. See Buckley for derivation
+    J(x,μ_0,μ_1) = 0.5 * ( 1/σ_2 * (μ_1 - h(μ_0))^2 + 1/σ_1 * (x - g(μ_0))^2)
+
+    # Inverse model. Derivative of x (observations) with respect to a (action)
+    dxda(a) = -force * (sech(a) * sech(a))
+
+    # Get gradients for both the agent and the generative process
+    # We use autodiff to make the code easier to adapt
+    ∇_J = gradient( (x_,μ_0_,μ_1_) 	 -> J(x_,μ_0_,μ_1_),	   x,μ_0,μ_1)
+    ∇_H = gradient( (x_,x_dot_,a_,m_,k_) -> H(x_,x_dot_,a_,m_,k_), x,x_dot,a,m,k)
+
+    # Combine gradients to get ∇_J'. Final entry is for action. Split through chain rule by using inverse model
+    ∇_J_prime = [∇_H[1],∇_H[2],∇_J[2],∇_J[3], -∇_J[1] * dxda(a)]
 
     # Define shared Q and Γ matrices for the whole system. First 2 rows follow H, the Hamiltonian of a simple harmonic oscillator. Rows 3 and 4 governs dynamics of the agent. Final row is action which is not part of the generative model as per Friston and Ao (2012).
     Q = [
@@ -57,7 +65,6 @@ function dynamics!(du,u,p,t)
 	 0.0 0.0 0.0 0.0 0.0
 	]
 
-    # ϕ(a,a_prime) = ( force / a_prime) *tanh(a). We add this later to avoid errors when a_prime=0
     # Random fluctuations govern entries of Γ. This performs gradient descent on potential function
     Γ = [
 	 0.0 0.0 0.0 0.0 0.0;
@@ -68,9 +75,9 @@ function dynamics!(du,u,p,t)
 	]
 
     # Calculate actual time derivatives. There has to be a better way to do bookkeeping
-    dudt = -(Q + Γ) * ∇
+    dudt = -(Q + Γ) * ∇_J_prime
     du[1] = dudt[1]
-    du[2] = dudt[2] + force * tanh(a) # We apply action here to avoid accidentally dividing by 0 when calculating ϕ
+    du[2] = dudt[2]
     du[3] = dudt[3]
     du[4] = dudt[4]
     du[5] = dudt[5]
@@ -82,22 +89,22 @@ function noise!(du,u,p,t)
     du[2] = 0.1
     du[3] = 0.0
     du[4] = 0.0
-    du[5] = 0.0 # Note that we don't add noise to active states.
-
+    du[5] = 0.0
 end
 
-# Initial conditions and timespan to solve
+# Initial conditions and timespan to solve. This is the vector state of the system
 u0 = [2.0,2.0,0.0,0.0,0.0]
 tspan = (0.0,50.0)
 prob = SDEProblem(dynamics!,noise!,u0,tspan,callback=cb,tstops=[tswitch])
 
 sol = solve(prob);
 
+# Vars (1,2) show the environment. (3,4) is the agent and (5) is the action.
 
-# Vars (1,2) show the environments. (3,4) are the agent and (5) is the action.
-
-# Plot all states
-plot(sol,dpi=600,labels=["p" "v" "μ" "μ'" "a"])#;savefig("viz/model.png")
+# Plot all states. This generate Fig. 1
+plot(sol,dpi=600,labels=[L"x" L"\dot{x}" L"\mu_0" L"\mu_1" L"a"])
+#savefig("viz/model.png")
 
 # Predicted / actual states. This should be close to a straight line - except for the spike when the environment is reset
-#plot(sol,vars=(1,3),dpi=600); savefig("viz/tracking.png")
+#plot(sol,vars=(1,3),dpi=600)
+#savefig("viz/tracking.png")
