@@ -54,7 +54,7 @@ function dynamics!(du,u,p,t)
     ∇_H = gradient( (x_,x_dot_,a_,m_,k_) -> H(x_,x_dot_,a_,m_,k_), x,x_dot,a,m,k)
 
     # Combine gradients to get ∇_J'. Final entry is for action. Split through chain rule by using inverse model
-    ∇_J_prime = [∇_H[1],∇_H[2],∇_J[2],∇_J[3], -∇_J[1] * dxda(a)]
+    ∇_J_prime = [∇_H[1],∇_H[2],∇_J[2],∇_J[3], ∇_J[1] * dxda(a)]
 
     # Define shared Q and Γ matrices for the whole system. First 2 rows follow H, the Hamiltonian of a simple harmonic oscillator. Rows 3 and 4 governs dynamics of the agent. Final row is action which is not part of the generative model as per Friston and Ao (2012).
     Q = [
