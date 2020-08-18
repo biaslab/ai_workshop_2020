@@ -75,7 +75,7 @@ function dynamics!(du,u,p,t)
 	]
 
     # Calculate actual time derivatives. There has to be a better way to do bookkeeping
-    dudt = -(Q + Γ) * ∇_J_prime
+    dudt = (Q - Γ) * ∇_J_prime
     du[1] = dudt[1]
     du[2] = dudt[2]
     du[3] = dudt[3]
