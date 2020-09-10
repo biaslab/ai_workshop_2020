@@ -1,41 +1,25 @@
 # Instantiate the environment. Tested on Julia 1.4.2
 using Pkg;Pkg.activate(".");Pkg.instantiate()
 # Load packages
-using OhMyREPL,Zygote, Random, DifferentialEquations, Plots, LaTeXStrings
+using Zygote, Random, DifferentialEquations, Plots, LaTeXStrings
 
+# Uncomment line below to get syntax highlighting in the REPL
+# using OhMyREPL,
 # Prevent OhMyREPL from accidentally introducing errors when piping to a repl
-enable_autocomplete_brackets(false)
+#enable_autocomplete_brackets(false)
 
 # Fix seed
 Random.seed!(666);
 
-# Set up callback and timepoint to switch environments
-tswitch = 25.0
-condition(u,t,integrator) = t==tswitch
-function affect!(integrator)
-    # New position and velocity
-    integrator.u[1] = 10.0
-    integrator.u[2] = 2.0
-end
-cb = DiscreteCallback(condition,affect!)
 
 # System dynamics
 function dynamics!(du,u,p,t)
-    x,x_dot,μ_0,μ_1,a = u # Unpack the state vector
-    σ_1, σ_2, force = p # Parameters of the agent. 2 precisions and an action limiting term
+    x, x_dot, μ_0, μ_1, a = u # Unpack the state vector. x for environment, μ for agent, a for action
+    σ_1, σ_2, force, m, k = p # Parameters of the agent. 2 precisions and an action limiting term
 
     # Link functions
     h(μ) = μ
     g(ϕ) = ϕ
-
-    # Parameters for environment. This change should be doable in a more elegant way
-    if t<tswitch
-	m = 1.
-	k = 1.
-    else
-	m = 10.
-	k = 0.1
-    end
 
     # Hamiltonian for the environmental process
     H(x,x_dot,a,m,k) = 1/(2*m) * x^2 + 1/2 * (k * x_dot^2) - x_dot * force *tanh(a)
@@ -56,20 +40,20 @@ function dynamics!(du,u,p,t)
 
     # Define shared Q and Γ matrices for the whole system. First 2 rows follow H, the Hamiltonian of a simple harmonic oscillator. Rows 3 and 4 governs dynamics of the agent. Final row is action which is not part of the generative model as per Friston and Ao (2012).
     Q = [
-	 0.0 -1.0 0.0 0.0 0.0;
-	 1.0 0.0 0.0 0.0 0.0;
-	 0.0 0.0 0.0 -1.0 0.0;
-	 0.0 0.0 1.0 0.0 0.0;
-	 0.0 0.0 0.0 0.0 0.0
+	 0.0 -1.0 0.0 0.0 0.0; 	# Environment
+	 1.0 0.0 0.0 0.0 0.0;	# Environment
+	 0.0 0.0 0.0 -1.0 0.0;	# Agent
+	 0.0 0.0 1.0 0.0 0.0;	# Agent
+	 0.0 0.0 0.0 0.0 0.0	# Action
 	]
 
     # Random fluctuations govern entries of Γ. This performs gradient descent on potential function
     Γ = [
-	 0.0 0.0 0.0 0.0 0.0;
-	 0.0 0.0 0.0 0.0 0.0;
-	 0.0 0.0 0.1 0.0 0.0;
-	 0.0 0.0 0.0 0.1 0.0;
-	 0.0 0.0 0.0 0.0 1.0
+	 0.0 0.0 0.0 0.0 0.0;	# Environment
+	 0.0 0.0 0.0 0.0 0.0;	# Environment
+	 0.0 0.0 0.1 0.0 0.0;	# Agent
+	 0.0 0.0 0.0 0.1 0.0;	# Agent
+	 0.0 0.0 0.0 0.0 1.0	# Action
 	]
 
     # Calculate actual time derivatives. There has to be a better way to do bookkeeping
@@ -89,24 +73,38 @@ function noise!(du,u,p,t)
     du[4] = 0.0
     du[5] = 0.0
 end
+# Set up callback and timepoint to switch environments
+tswitch = 25.0
+condition(u,t,integrator) = t==tswitch
+function affect!(integrator)
+    # New position and velocity
+    integrator.u[1] = 10.0
+    integrator.u[2] = 2.0
+    # New environmental constants
+    integrator.p[4] = 10.0
+    integrator.p[5] = 0.1
+end
+cb = DiscreteCallback(condition,affect!)
 
-# Initial conditions and timespan to solve.
+# Initial conditions
 x_0 	= 2.0
 x_dot_0 = 2.0
 μ_0_0 	= 0.0
 μ_1_0 	= 0.0
 a_0 	= 0.0
 
-# This is the vector state of the system
-u0 = [x_0,x_dot_0,μ_0_0,μ_1_0,a_0]
-
 # Parameters for agent
 σ_1	= 0.1
 σ_2	= 0.1
 force	= 0.5
+# Parameters for environment
+m = 1.0
+force = 0.5
 
-# Parameter vector
-p = [0.1,0.1,0.5]
+# Parameter vector.
+p = [σ_1,σ_2,force,m,k]
+# Initial state vector of the system.
+u0 = [x_0,x_dot_0,μ_0_0,μ_1_0,a_0]
 
 # Timespan to solve
 tspan = (0.0,50.0)
