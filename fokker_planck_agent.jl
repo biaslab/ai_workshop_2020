@@ -3,9 +3,6 @@ using OhMyREPL,Zygote, Random, DifferentialEquations, Plots, LaTeXStrings
 enable_autocomplete_brackets(false)
 
 Random.seed!(666);
-# TODO
-# Add f and g functions to make the code easier to mess around with.
-# Find a better way to change the Hamiltonian
 
 # Set up callback and timepoint to switch environments
 tswitch = 25.0
@@ -19,7 +16,7 @@ cb = DiscreteCallback(condition,affect!)
 
 # System dynamics
 function dynamics!(du,u,p,t)
-    x,x_dot,μ_0,μ_1,a = u # Unpacke the state vector
+    x,x_dot,μ_0,μ_1,a = u # Unpack the state vector
 
     # Link functions
     h(μ) = μ
@@ -34,7 +31,7 @@ function dynamics!(du,u,p,t)
 	k = 0.1
     end
 
-    # Parameters for agent. 2 precisions and action limiting term
+    # Parameters for agent. 2 precisions and action limiting term. Probably also doable through p
     σ_1 = 0.1
     σ_2 = 0.1
     force = 0.5
@@ -42,7 +39,7 @@ function dynamics!(du,u,p,t)
     # Hamiltonian for the environmental process
     H(x,x_dot,a,m,k) = 1/(2*m) * x^2 + 1/2 * (k * x_dot^2) - x_dot * force *tanh(a)
 
-    # VFE as potential function. With the right choice of p and q it boils down to precision weighed prediction errors. See Buckley for derivation
+    # VFE as potential function. With the right choice of p and q it boils down to precision weighed prediction errors. See Buckley (2017) for derivation
     J(x,μ_0,μ_1) = 0.5 * ( 1/σ_2 * (μ_1 - h(μ_0))^2 + 1/σ_1 * (x - g(μ_0))^2)
 
     # Inverse model. Derivative of x (observations) with respect to a (action)
