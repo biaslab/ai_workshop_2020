@@ -1,7 +1,12 @@
+# Instantiate the environment. Tested on Julia 1.4.2
 using Pkg;Pkg.activate(".");Pkg.instantiate()
+# Load packages
 using OhMyREPL,Zygote, Random, DifferentialEquations, Plots, LaTeXStrings
+
+# Prevent OhMyREPL from accidentally introducing errors when piping to a repl
 enable_autocomplete_brackets(false)
 
+# Fix seed
 Random.seed!(666);
 
 # Set up callback and timepoint to switch environments
@@ -17,12 +22,13 @@ cb = DiscreteCallback(condition,affect!)
 # System dynamics
 function dynamics!(du,u,p,t)
     x,x_dot,μ_0,μ_1,a = u # Unpack the state vector
+    σ_1, σ_2, force = p # Parameters of the agent. 2 precisions and an action limiting term
 
     # Link functions
     h(μ) = μ
     g(ϕ) = ϕ
 
-    # Parameters for environment. This change should be doable through p in the input instead.
+    # Parameters for environment. This change should be doable in a more elegant way
     if t<tswitch
 	m = 1.
 	k = 1.
@@ -30,11 +36,6 @@ function dynamics!(du,u,p,t)
 	m = 10.
 	k = 0.1
     end
-
-    # Parameters for agent. 2 precisions and action limiting term. Probably also doable through p
-    σ_1 = 0.1
-    σ_2 = 0.1
-    force = 0.5
 
     # Hamiltonian for the environmental process
     H(x,x_dot,a,m,k) = 1/(2*m) * x^2 + 1/2 * (k * x_dot^2) - x_dot * force *tanh(a)
@@ -89,16 +90,34 @@ function noise!(du,u,p,t)
     du[5] = 0.0
 end
 
-# Initial conditions and timespan to solve. This is the vector state of the system
-u0 = [2.0,2.0,0.0,0.0,0.0]
-tspan = (0.0,50.0)
-prob = SDEProblem(dynamics!,noise!,u0,tspan,callback=cb,tstops=[tswitch])
+# Initial conditions and timespan to solve.
+x_0 	= 2.0
+x_dot_0 = 2.0
+μ_0_0 	= 0.0
+μ_1_0 	= 0.0
+a_0 	= 0.0
 
+# This is the vector state of the system
+u0 = [x_0,x_dot_0,μ_0_0,μ_1_0,a_0]
+
+# Parameters for agent
+σ_1	= 0.1
+σ_2	= 0.1
+force	= 0.5
+
+# Parameter vector
+p = [0.1,0.1,0.5]
+
+# Timespan to solve
+tspan = (0.0,50.0)
+
+# Create the problem and solution object
+prob = SDEProblem(dynamics!,noise!,u0,tspan,p,callback=cb,tstops=[tswitch])
 sol = solve(prob);
 
 # Vars (1,2) show the environment. (3,4) is the agent and (5) is the action.
 
-# Plot all states. This generate Fig. 1
+# Plot all states. This generates Fig. 1 from the paper
 plot(sol,dpi=600,labels=[L"x" L"\dot{x}" L"\mu_0" L"\mu_1" L"a"])
 #savefig("viz/model.png")
 
